@@ -128,27 +128,27 @@ class Generator
 
     protected function generatePath()
     {
-        $actionInstance = $this->getActionClassInstance();
-        $docBlock = $actionInstance ? ($actionInstance->getDocComment() ?: '') : '';
-
-        [$isDeprecated, $summary, $description] = $this->parseActionDocBlock($docBlock);
-
-        $this->docs['paths'][$this->route->uri()][$this->method] = [
-            'summary' => $summary,
-            'description' => $description,
-            'deprecated' => $isDeprecated,
-            'responses' => [
-                '200' => [
-                    'description' => 'OK',
-                ],
-            ],
-        ];
+        $this->addActionResponse();
 
         $this->addActionParameters();
 
         if ($this->hasSecurityDefinitions) {
             $this->addActionScopes();
         }
+    }
+
+    protected function addActionResponse(){
+        $actionInstance = $this->getActionClassInstance();
+        $docBlock = $actionInstance ? ($actionInstance->getDocComment() ?: '') : '';
+        [$isDeprecated, $summary, $description, $output] = $this->parseActionDocBlock($docBlock);
+
+        $responses = (new Responses\BodyResponseGenerator($output))->getReponse();
+        $this->docs['paths'][$this->route->uri()][$this->method] = [
+            'summary' => $summary,
+            'description' => $description,
+            'deprecated' => $isDeprecated,
+            'responses' => $responses,
+        ];
     }
 
     protected function addActionParameters()
@@ -232,7 +232,7 @@ class Generator
     private function parseActionDocBlock(string $docBlock)
     {
         if (empty($docBlock) || !$this->config['parseDocBlock']) {
-            return [false, '', ''];
+            return [false, '', '',''];
         }
 
         try {
@@ -240,12 +240,19 @@ class Generator
 
             $isDeprecated = $parsedComment->hasTag('deprecated');
 
+            $output = $parsedComment->getTagsByName('output');
+            if (count($output) ==1){
+                $outputClassname = $output[0]->getDescription()->render();
+                $output = call_user_func($outputClassname.'::getOutputStructure');
+            }else{
+                $output = '';
+            }
             $summary = $parsedComment->getSummary();
             $description = (string) $parsedComment->getDescription();
 
-            return [$isDeprecated, $summary, $description];
+            return [$isDeprecated, $summary, $description, $output];
         } catch (\Exception $e) {
-            return [false, '', ''];
+            return [false, '', '',''];
         }
     }
 
